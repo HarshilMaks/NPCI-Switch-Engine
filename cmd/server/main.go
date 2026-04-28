@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -16,22 +14,19 @@ import (
 )
 
 func main() {
-	cfg := config.LoadConfig()
+	cfg := config.Load()
 
-	db, err := storage.InitDB(cfg.DatabaseURL)
+	db, err := storage.Open(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("failed to initialize database: %v", err)
+		log.Fatalf("failed to open database: %v", err)
 	}
 	defer db.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := storage.Migrate(ctx, db); err != nil {
+	if err := storage.Migrate(db); err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}
 
-	if err := storage.Seed(ctx, db); err != nil {
+	if err := storage.Seed(db, cfg); err != nil {
 		log.Fatalf("failed to seed: %v", err)
 	}
 
@@ -58,3 +53,5 @@ func main() {
 		log.Fatalf("server error: %v", err)
 	}
 }
+
+

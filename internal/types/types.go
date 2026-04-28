@@ -10,6 +10,19 @@ type PaymentCreateRequest struct {
 	ClientRef string `json:"client_ref,omitempty"`
 }
 
+type ConfirmPaymentRequest struct {
+	AuthCode string `json:"auth_code"`
+}
+
+type CancelPaymentRequest struct {
+	Reason string `json:"reason"`
+}
+
+type ManualReversalRequest struct {
+	OriginalTransactionID string `json:"original_transaction_id"`
+	Reason                string `json:"reason"`
+}
+
 type PaymentResponse struct {
 	TransactionID string    `json:"transaction_id"`
 	Status        string    `json:"status"`
@@ -43,3 +56,17 @@ type ErrorEnvelope struct {
 	CorrelationID string         `json:"correlation_id"`
 }
 
+type LedgerEntry struct {
+	EntryID       string    `json:"entry_id"`
+	TransactionID string    `json:"transaction_id"`
+	Account       string    `json:"account"`
+	LegType       string    `json:"leg_type"`
+	Amount        string    `json:"amount"`
+	PostedAt      time.Time `json:"posted_at"`
+}
+
+type LedgerResponse struct {
+	AccountID string         `json:"account_id"`
+	Entries   []LedgerEntry  `json:"entries"`
+	Total     string         `json:"total"`
+}
