@@ -262,7 +262,7 @@ func (s *PaymentService) ManualReversal(ctx context.Context, req types.ReversalR
 	if payee == nil {
 		return nil, NewAppError(400, "PAYEE_VPA_NOT_FOUND", "payee vpa not found")
 	}
-	holding, err := s.getAccountByID(ctx, tx, "SYSTEM_HOLDING_ACCOUNT")
+	holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if payer == nil {
 			return s.transition(ctx, tx, row, "FAILED", "PAYER_VPA_NOT_FOUND", "orchestrator", correlationID)
 		}
-		holding, err := s.getAccountByID(ctx, tx, "SYSTEM_HOLDING_ACCOUNT")
+		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
 		if err != nil {
 			return err
 		}
@@ -370,7 +370,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if err != nil {
 			return err
 		}
-		holding, err := s.getAccountByID(ctx, tx, "SYSTEM_HOLDING_ACCOUNT")
+		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
 		if err != nil {
 			return err
 		}
@@ -407,7 +407,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if err != nil {
 			return err
 		}
-		holding, err := s.getAccountByID(ctx, tx, "SYSTEM_HOLDING_ACCOUNT")
+		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
 		if err != nil {
 			return err
 		}

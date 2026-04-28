@@ -158,9 +158,9 @@ sequenceDiagram
 
 ## 7.1 Storage choices
 
-- **PostgreSQL**: source of truth, ACID state + ledger + events.
-- **Redis**: idempotency key cache, short-lived locks, rate limits.
-- **Kafka**: integration/event bus, worker decoupling.
+- **SQLite (modernc.org/sqlite)**: source of truth, ACID state + ledger + events. Pure Go driver with no CGO dependencies.
+- **In-process idempotency cache**: request hash + scope-key unique constraint for duplicate detection.
+- **Outbox pattern**: `outbox_events` table for reliable async event propagation (phase 2 integration with Kafka/NATS).
 
 ## 7.2 Core schema (logical)
 
@@ -285,33 +285,33 @@ sequenceDiagram
 ```mermaid
 flowchart TB
     subgraph Runtime
-      A1[FastAPI Pods]
-      A2[Worker Pods]
-      A3[Outbox Relay]
-      A4[Scheduler]
+      A1[Go API Server]
+      A2[Worker Pool (goroutines)]
+      A3[Outbox Relay Worker]
+      A4[Reconciliation Service]
     end
 
-    B1[(PostgreSQL Primary)]
-    B2[(Redis)]
-    B3[(Kafka Cluster)]
-    C1[Monitoring Stack]
+    B1[(SQLite DB)]
+    C1[Observability Stack]
 
     A1 --> B1
-    A1 --> B2
     A2 --> B1
-    A2 --> B3
     A3 --> B1
-    A3 --> B3
-    A4 --> A2
+    A4 --> B1
     A1 --> C1
     A2 --> C1
 ```
 
 ### Environment strategy
 
-1. Local: Docker Compose (single-node dependencies).
-2. Staging: production-like topology with synthetic load.
-3. Production-sim: HA DB, replicated workers, partitioned Kafka topics.
+1. **Development**: Single binary + SQLite (embedded, file-based).
+2. **Staging**: Binary with production-like load, ledger invariant validation.
+3. **Production readiness**: Event bus integration (Kafka/NATS), distributed tracing, metrics collection.
+
+### Deployment model
+
+- **MVP (Phase 1-2)**: Single Go binary + SQLite, chi HTTP router, goroutine-based async.
+- **Scale (Phase 3+)**: Horizontal API server replication, event bus for worker distribution, external SQLite replication (WAL mode).
 
 ---
 
