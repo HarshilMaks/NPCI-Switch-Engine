@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -14,7 +15,10 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config load failed: %v", err)
+	}
 
 	db, err := storage.Open(cfg.DatabaseURL)
 	if err != nil {
@@ -30,13 +34,14 @@ func main() {
 		log.Fatalf("failed to seed: %v", err)
 	}
 
-	paymentSvc := services.NewPaymentService(db)
+	paymentSvc := services.NewPaymentService(db, cfg)
 	reconciliationSvc := services.NewReconciliationService(db)
 	handler := handlers.NewPaymentHandler(paymentSvc, reconciliationSvc)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(timeoutMiddleware(time.Duration(cfg.RequestTimeout) * time.Second))
 
 	handlers.RegisterRoutes(r, handler)
 
@@ -51,6 +56,16 @@ func main() {
 	log.Printf("🚀 Payment Switch Engine starting on %s\n", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
+	}
+}
+
+func timeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
 }
 

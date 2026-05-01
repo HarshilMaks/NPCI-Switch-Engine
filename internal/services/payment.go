@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"npci-upi/internal/config"
 	"npci-upi/internal/state"
 	"npci-upi/internal/types"
 )
@@ -21,11 +22,15 @@ import (
 const idempotencyScopePayments = "payments:create"
 
 type PaymentService struct {
-	DB *sql.DB
+	DB               *sql.DB
+	HoldingAccountID string
 }
 
-func NewPaymentService(db *sql.DB) *PaymentService {
-	return &PaymentService{DB: db}
+func NewPaymentService(db *sql.DB, cfg config.Settings) *PaymentService {
+	return &PaymentService{
+		DB:               db,
+		HoldingAccountID: cfg.SystemHoldingAccount,
+	}
 }
 
 type accountRow struct {
@@ -133,15 +138,18 @@ func (s *PaymentService) CreatePayment(
 		AcceptedAt:    now,
 	}
 
-	responseJSON, _ := json.Marshal(response)
-	if err := s.insertIdempotency(ctx, tx, idempotencyKey, requestHash, responseJSON, 202); err != nil {
+	responseJSON, err := json.Marshal(response)
+	if err != nil {
+		return 0, types.PaymentResponse{}, NewAppError(500, "RESPONSE_ENCODING_ERROR", "failed to encode response")
+	}
+	if err := s.insertIdempotency(ctx, tx, idempotencyKey, requestHash, responseJSON, 201); err != nil {
 		return 0, types.PaymentResponse{}, NewAppError(500, "IDEMPOTENCY_WRITE_ERROR", err.Error())
 	}
 
 	if err := tx.Commit(); err != nil {
 		return 0, types.PaymentResponse{}, NewAppError(500, "DB_COMMIT_ERROR", err.Error())
 	}
-	return 202, response, nil
+	return 201, response, nil
 }
 
 func (s *PaymentService) GetPaymentStatus(ctx context.Context, transactionID string) (*types.PaymentStatusResponse, error) {
@@ -262,7 +270,7 @@ func (s *PaymentService) ManualReversal(ctx context.Context, req types.ReversalR
 	if payee == nil {
 		return nil, NewAppError(400, "PAYEE_VPA_NOT_FOUND", "payee vpa not found")
 	}
-	holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
+	holding, err := s.getAccountByID(ctx, tx, s.HoldingAccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +354,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if payer == nil {
 			return s.transition(ctx, tx, row, "FAILED", "PAYER_VPA_NOT_FOUND", "orchestrator", correlationID)
 		}
-		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
+		holding, err := s.getAccountByID(ctx, tx, s.HoldingAccountID)
 		if err != nil {
 			return err
 		}
@@ -370,7 +378,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if err != nil {
 			return err
 		}
-		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
+		holding, err := s.getAccountByID(ctx, tx, s.HoldingAccountID)
 		if err != nil {
 			return err
 		}
@@ -407,7 +415,7 @@ func (s *PaymentService) processPaymentFlow(ctx context.Context, tx *sql.Tx, row
 		if err != nil {
 			return err
 		}
-		holding, err := s.getAccountByID(ctx, tx, "system-holding-account")
+		holding, err := s.getAccountByID(ctx, tx, s.HoldingAccountID)
 		if err != nil {
 			return err
 		}
@@ -478,7 +486,10 @@ func (s *PaymentService) transition(ctx context.Context, tx *sql.Tx, row *transa
 	}
 
 	meta := map[string]any{"correlation_id": correlationID}
-	metaJSON, _ := json.Marshal(meta)
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return NewAppError(500, "METADATA_ENCODING_ERROR", "failed to encode metadata")
+	}
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO transaction_events (id, transaction_id, from_status, to_status, reason_code, actor, metadata_json, created_at)
@@ -498,8 +509,11 @@ func (s *PaymentService) transition(ctx context.Context, tx *sql.Tx, row *transa
 }
 
 func (s *PaymentService) insertOutbox(ctx context.Context, tx *sql.Tx, aggregateType, aggregateID, eventType string, payload map[string]any) error {
-	payloadJSON, _ := json.Marshal(payload)
-	_, err := tx.ExecContext(
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return NewAppError(500, "PAYLOAD_ENCODING_ERROR", "failed to encode event payload")
+	}
+	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO outbox_events (id, aggregate_type, aggregate_id, event_type, payload, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,

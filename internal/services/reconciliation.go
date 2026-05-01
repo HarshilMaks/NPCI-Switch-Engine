@@ -79,10 +79,13 @@ func (s *ReconciliationService) Run(ctx context.Context) (map[string]any, error)
 
 		if status == "COMPLETED" || status == "REVERSED" {
 			if debitCount == 0 || creditCount == 0 {
-				details, _ := json.Marshal(map[string]any{
+				details, err := json.Marshal(map[string]any{
 					"has_debit":  debitCount > 0,
 					"has_credit": creditCount > 0,
 				})
+				if err != nil {
+					return nil, NewAppError(500, "DETAILS_ENCODING_ERROR", "failed to encode diff details")
+				}
 				if _, err := tx.ExecContext(
 					ctx,
 					`INSERT INTO reconciliation_diffs (id, run_id, transaction_id, diff_type, details_json, created_at)
@@ -96,10 +99,13 @@ func (s *ReconciliationService) Run(ctx context.Context) (map[string]any, error)
 		}
 
 		if debitSum.Valid && creditSum.Valid && debitSum.String != creditSum.String {
-			details, _ := json.Marshal(map[string]any{
+			details, err := json.Marshal(map[string]any{
 				"debit_total":  debitSum.String,
 				"credit_total": creditSum.String,
 			})
+			if err != nil {
+				return nil, NewAppError(500, "DETAILS_ENCODING_ERROR", "failed to encode mismatch details")
+			}
 			if _, err := tx.ExecContext(
 				ctx,
 				`INSERT INTO reconciliation_diffs (id, run_id, transaction_id, diff_type, details_json, created_at)
@@ -117,10 +123,13 @@ func (s *ReconciliationService) Run(ctx context.Context) (map[string]any, error)
 			updatedAt, _ := time.Parse(time.RFC3339Nano, updatedAtStr)
 			ageThreshold := time.Now().UTC().Add(-10 * time.Minute)
 			if updatedAt.Before(ageThreshold) {
-				details, _ := json.Marshal(map[string]any{
+				details, err := json.Marshal(map[string]any{
 					"status":     status,
 					"updated_at": updatedAtStr,
 				})
+				if err != nil {
+					return nil, NewAppError(500, "DETAILS_ENCODING_ERROR", "failed to encode stale pending details")
+				}
 				if _, err := tx.ExecContext(
 					ctx,
 					`INSERT INTO reconciliation_diffs (id, run_id, transaction_id, diff_type, details_json, created_at)
@@ -147,7 +156,10 @@ func (s *ReconciliationService) Run(ctx context.Context) (map[string]any, error)
 		"stale_pending_count":        staleCount,
 		"unpublished_outbox_events":  unpublishedCount,
 	}
-	summaryJSON, _ := json.Marshal(summary)
+	summaryJSON, err := json.Marshal(summary)
+	if err != nil {
+		return nil, NewAppError(500, "SUMMARY_ENCODING_ERROR", "failed to encode reconciliation summary")
+	}
 
 	if _, err := tx.ExecContext(
 		ctx,

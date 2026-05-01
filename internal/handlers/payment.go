@@ -28,13 +28,22 @@ func (h *PaymentHandler) WriteJSON(w http.ResponseWriter, code int, data interfa
 	json.NewEncoder(w).Encode(data)
 }
 
-func (h *PaymentHandler) WriteError(w http.ResponseWriter, err services.AppError) {
+// toAppError safely converts an error to AppError, defaulting to 500 if not AppError type
+func (h *PaymentHandler) toAppError(err error) services.AppError {
+	if appErr, ok := err.(services.AppError); ok {
+		return appErr
+	}
+	return services.NewAppError(500, "INTERNAL_ERROR", "an unexpected error occurred")
+}
+
+func (h *PaymentHandler) WriteError(w http.ResponseWriter, err error) {
+	appErr := h.toAppError(err)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(err.Status)
+	w.WriteHeader(appErr.Status)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"error": map[string]interface{}{
-			"code":    err.Code,
-			"message": err.Message,
+			"code":    appErr.Code,
+			"message": appErr.Message,
 		},
 	})
 }
@@ -57,7 +66,7 @@ func (h *PaymentHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
 
 	statusCode, resp, appErr := h.PaymentSvc.CreatePayment(r.Context(), req, idempKey, correlID)
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
@@ -69,7 +78,7 @@ func (h *PaymentHandler) GetPayment(w http.ResponseWriter, r *http.Request) {
 
 	resp, appErr := h.PaymentSvc.GetPaymentStatus(r.Context(), paymentID)
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
@@ -94,7 +103,7 @@ func (h *PaymentHandler) ConfirmPayment(w http.ResponseWriter, r *http.Request) 
 
 	resp, appErr := h.PaymentSvc.ConfirmPayment(r.Context(), paymentID, correlID)
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
@@ -119,7 +128,7 @@ func (h *PaymentHandler) CancelPayment(w http.ResponseWriter, r *http.Request) {
 
 	resp, appErr := h.PaymentSvc.CancelPayment(r.Context(), paymentID, correlID)
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
@@ -147,7 +156,7 @@ func (h *PaymentHandler) ManualReversal(w http.ResponseWriter, r *http.Request) 
 	}
 	resp, appErr := h.PaymentSvc.ManualReversal(r.Context(), req2, correlID)
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
@@ -179,7 +188,7 @@ func (h *PaymentHandler) GetAccountLedger(w http.ResponseWriter, r *http.Request
 func (h *PaymentHandler) RunReconciliation(w http.ResponseWriter, r *http.Request) {
 	resp, appErr := h.ReconciliationSvc.Run(r.Context())
 	if appErr != nil {
-		h.WriteError(w, appErr.(services.AppError))
+		h.WriteError(w, appErr)
 		return
 	}
 
